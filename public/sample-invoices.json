@@ -1,0 +1,248 @@
+{
+  "shop": {
+    "name": "28DEGREE UNISEX SALON",
+    "gstin": "07AACCZ9710B1ZG"
+  },
+  "invoices": [
+    {
+      "inv_mencr": 24014,
+      "invoice_no": "INV01",
+      "invoice_date": "26-08-2026 17:45 PM",
+      "customer_name": "Aarav",
+      "mobile": "9679101679",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Online payment",
+      "total_qty": 1,
+      "taxable_value": 100,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 2.5,
+      "cgst": 2.5,
+      "total": 105,
+      "advance": 0,
+      "amount_paid": 105,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Beard Trim",
+          "sac_hsn": "",
+          "provider": "Arshad",
+          "rate": 100,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 100
+        }
+      ]
+    },
+    {
+      "inv_mencr": 24028,
+      "invoice_no": "INV02",
+      "invoice_date": "27-08-2026 17:45 PM",
+      "customer_name": "Priya",
+      "mobile": "9593558274",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Online payment",
+      "total_qty": 1,
+      "taxable_value": 500,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 12.5,
+      "cgst": 12.5,
+      "total": 525,
+      "advance": 0,
+      "amount_paid": 525,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Hair Cut - Women",
+          "sac_hsn": "",
+          "provider": "Nisha",
+          "rate": 500,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 500
+        }
+      ]
+    },
+    {
+      "inv_mencr": 24042,
+      "invoice_no": "INV03",
+      "invoice_date": "28-08-2026 17:45 PM",
+      "customer_name": "Rahul",
+      "mobile": "9633424811",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Paytm",
+      "total_qty": 1,
+      "taxable_value": 899,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 22.48,
+      "cgst": 22.48,
+      "total": 943.96,
+      "advance": 0,
+      "amount_paid": 943.96,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Facial - Gold",
+          "sac_hsn": "",
+          "provider": "Nisha",
+          "rate": 899,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 899
+        }
+      ]
+    },
+    {
+      "inv_mencr": 24056,
+      "invoice_no": "INV04",
+      "invoice_date": "29-08-2026 17:45 PM",
+      "customer_name": "Rahul",
+      "mobile": "9440335334",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Paytm",
+      "total_qty": 1,
+      "taxable_value": 500,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 12.5,
+      "cgst": 12.5,
+      "total": 525,
+      "advance": 0,
+      "amount_paid": 525,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Hair Cut - Women",
+          "sac_hsn": "",
+          "provider": "Nisha",
+          "rate": 500,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 500
+        }
+      ]
+    },
+    {
+      "inv_mencr": 24070,
+      "invoice_no": "INV05",
+      "invoice_date": "30-08-2026 17:45 PM",
+      "customer_name": "Priya",
+      "mobile": "9197319732",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Paytm",
+      "total_qty": 1,
+      "taxable_value": 350,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 8.75,
+      "cgst": 8.75,
+      "total": 367.5,
+      "advance": 0,
+      "amount_paid": 367.5,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Manicure",
+          "sac_hsn": "",
+          "provider": "Priya",
+          "rate": 350,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 350
+        }
+      ]
+    },
+    {
+      "inv_mencr": 24084,
+      "invoice_no": "INV06",
+      "invoice_date": "31-08-2026 17:45 PM",
+      "customer_name": "Priya",
+      "mobile": "9860196785",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Online payment",
+      "total_qty": 1,
+      "taxable_value": 250,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 6.25,
+      "cgst": 6.25,
+      "total": 262.5,
+      "advance": 0,
+      "amount_paid": 262.5,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Hair Cut - Men",
+          "sac_hsn": "",
+          "provider": "Arshad",
+          "rate": 250,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 250
+        }
+      ]
+    },
+    {
+      "inv_mencr": 24098,
+      "invoice_no": "INV07",
+      "invoice_date": "01-09-2026 17:45 PM",
+      "customer_name": "Rahul",
+      "mobile": "9284254257",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Paytm",
+      "total_qty": 1,
+      "taxable_value": 100,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 2.5,
+      "cgst": 2.5,
+      "total": 105,
+      "advance": 0,
+      "amount_paid": 105,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Beard Trim",
+          "sac_hsn": "",
+          "provider": "Arshad",
+          "rate": 100,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 100
+        }
+      ]
+    },
+    {
+      "inv_mencr": 24112,
+      "invoice_no": "INV08",
+      "invoice_date": "02-09-2026 17:45 PM",
+      "customer_name": "Rahul",
+      "mobile": "9146160035",
+      "place_of_supply": "Delhi",
+      "payment_mode": "Online payment",
+      "total_qty": 1,
+      "taxable_value": 1500,
+      "discount": 0,
+      "tax_type": "Exclusive",
+      "sgst": 37.5,
+      "cgst": 37.5,
+      "total": 1575,
+      "advance": 0,
+      "amount_paid": 1575,
+      "amount_due": 0,
+      "items": [
+        {
+          "service": "Service Hair Color",
+          "sac_hsn": "",
+          "provider": "Rohit",
+          "rate": 1500,
+          "qty": 1,
+          "discount": 0,
+          "taxable_value": 1500
+        }
+      ]
+    }
+  ]
+}
