@@ -78,6 +78,21 @@ npm run build    # production build -> dist/
 }
 ```
 
+## 🔔 New-bill push notifications (ntfy)
+
+A scheduled GitHub Actions workflow (`.github/workflows/bill-notify.yml`) runs **every 3 minutes**, watches the salon billing system for new invoice numbers, and pushes a **ntfy notification with full bill details** to your phone the moment a new bill is generated.
+
+Notification includes: invoice no & date, customer, mobile, place, payment mode, every service (provider × qty @ rate = value), taxable, discount, SGST/CGST, total, amount paid & due. Tapping it opens the actual bill.
+
+**One-time setup (on your phone):**
+1. Install the **ntfy** app — Android: Play Store, iOS: App Store.
+2. In the app, **+ → subscribe to topic** `salon-bills-c38d863a12e1f4` (or open `https://ntfy.sh/salon-bills-c38d863a12e1f4`).
+3. Done. Next new bill → you get a notification with all details.
+
+> The topic/URL lives in the **`NTFY_URL` repo secret** (private). Configuration for a private/self-hosted server: set `NTFY_TOKEN` secret + point `NTFY_URL` at your server.
+
+You can also run it anytime: **Actions → New Bill Notifier → Run workflow**, or locally `python tools/notify_bills.py` (and `--test` to send a trial notification).
+
 ## 🗂 Tech stack
 
 React 18 · Vite 5 · Tailwind CSS 3 · Recharts 2 · lucide-react · IndexedDB · PWA
