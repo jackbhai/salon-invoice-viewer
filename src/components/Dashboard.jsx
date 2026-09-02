@@ -99,14 +99,22 @@ export default function Dashboard({ data, goTab }) {
       </div>
 
       {/* quick actions */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <button onClick={() => goTab('menu')} className="rounded-xl border border-amoled-border2 bg-amoled-card p-4 text-left hover:border-cyan-500/40 transition">
+          <div className="text-sm font-semibold">🪧 Menu & Prices</div>
+          <p className="text-xs text-amoled-dim mt-1">Auto menu with old vs new price</p>
+        </button>
         <button onClick={() => goTab('invoices')} className="rounded-xl border border-amoled-border2 bg-amoled-card p-4 text-left hover:border-cyan-500/40 transition">
-          <div className="text-sm font-semibold">Browse Invoices</div>
+          <div className="text-sm font-semibold">🧾 Invoices</div>
           <p className="text-xs text-amoled-dim mt-1">Search, filter & open any invoice</p>
         </button>
+        <button onClick={() => goTab('team')} className="rounded-xl border border-amoled-border2 bg-amoled-card p-4 text-left hover:border-cyan-500/40 transition">
+          <div className="text-sm font-semibold">👥 Workers</div>
+          <p className="text-xs text-amoled-dim mt-1">Customers attended & revenue per staff</p>
+        </button>
         <button onClick={() => goTab('analytics')} className="rounded-xl border border-amoled-border2 bg-amoled-card p-4 text-left hover:border-cyan-500/40 transition">
-          <div className="text-sm font-semibold">Deep Analytics</div>
-          <p className="text-xs text-amoled-dim mt-1">Providers, date trends & breakdowns</p>
+          <div className="text-sm font-semibold">📊 Analytics</div>
+          <p className="text-xs text-amoled-dim mt-1">Providers, trends & breakdowns</p>
         </button>
       </div>
     </div>

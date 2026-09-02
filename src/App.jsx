@@ -4,8 +4,10 @@ import Sidebar from './components/Sidebar.jsx'
 import BottomNav from './components/BottomNav.jsx'
 import Upload from './components/Upload.jsx'
 import Dashboard from './components/Dashboard.jsx'
+import Menu from './components/Menu.jsx'
 import Invoices from './components/Invoices.jsx'
 import Customers from './components/Customers.jsx'
+import Team from './components/Team.jsx'
 import Analytics from './components/Analytics.jsx'
 import { normalizeData } from './lib/data.js'
 import { dbPut, dbGet, dbDelete } from './lib/db.js'
@@ -107,8 +109,10 @@ export default function App() {
           ) : (
             <>
               {tab === 'dashboard' && <Dashboard data={dataset} goTab={setTab} />}
+              {tab === 'menu' && <Menu data={dataset} />}
               {tab === 'invoices' && <Invoices data={dataset} />}
               {tab === 'customers' && <Customers data={dataset} />}
+              {tab === 'team' && <Team data={dataset} />}
               {tab === 'analytics' && <Analytics data={dataset} />}
             </>
           )}

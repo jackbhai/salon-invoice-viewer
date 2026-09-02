@@ -1,10 +1,12 @@
 import React from 'react'
-import { LayoutDashboard, ReceiptText, Users, BarChart3, FileUp, Database, Trash2, X, Sparkles } from 'lucide-react'
+import { LayoutDashboard, ReceiptText, Users, BarChart3, FileUp, Database, Trash2, X, Sparkles, ChefHat, UserRound } from 'lucide-react'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'menu', label: 'Menu Maker', icon: ChefHat },
   { id: 'invoices', label: 'Invoices', icon: ReceiptText },
   { id: 'customers', label: 'Customers', icon: Users },
+  { id: 'team', label: 'Workers', icon: UserRound },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ]
 

@@ -2,11 +2,13 @@ import React, { useMemo, useState } from 'react'
 import { Search, Users, Phone, MapPin } from 'lucide-react'
 import { Card, SectionTitle } from './ui.jsx'
 import { formatMoney } from '../lib/data.js'
+import CustomerDetail from './CustomerDetail.jsx'
 
 export default function Customers({ data }) {
   const invoices = data.invoices
   const [q, setQ] = useState('')
   const [sort, setSort] = useState('revenue')
+  const [openName, setOpenName] = useState(null)
 
   const customers = useMemo(() => {
     const map = new Map()
@@ -55,7 +57,7 @@ export default function Customers({ data }) {
 
       <div className="space-y-2">
         {customers.map((c, idx) => (
-          <Card key={c.name + idx} className="p-3.5 flex items-center gap-3">
+          <button key={c.name + idx} onClick={() => setOpenName(c.name)} className="w-full text-left rounded-xl border border-amoled-border bg-amoled-card p-3.5 flex items-center gap-3 hover:border-cyan-500/30 hover:bg-amoled-card2 transition">
             <div className="grid place-items-center w-10 h-10 rounded-full bg-gradient-to-br from-cyan-500/20 to-violet-500/20 text-cyan-300 font-bold shrink-0">
               {c.name.slice(0, 1).toUpperCase()}
             </div>
@@ -74,10 +76,12 @@ export default function Customers({ data }) {
               <div className="text-sm font-bold num text-cyan-300">{formatMoney(c.revenue)}</div>
               <div className="text-[10px] text-amoled-dim num">{formatMoney(c.due)} due</div>
             </div>
-          </Card>
+          </button>
         ))}
         {customers.length === 0 && <Card className="p-10 text-center text-amoled-dim">No customers found.</Card>}
       </div>
+
+      {openName && <CustomerDetail invoices={invoices} name={openName} onClose={() => setOpenName(null)} />}
     </div>
   )
 }
