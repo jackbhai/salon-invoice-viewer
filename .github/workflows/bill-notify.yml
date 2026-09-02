@@ -1,0 +1,58 @@
+name: New Bill Notifier
+
+on:
+  schedule:
+    # every 3 minutes
+    - cron: '*/3 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bill-watcher
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install beautifulsoup4
+
+      - name: Restore watcher state
+        id: state
+        uses: actions/cache@v4
+        with:
+          path: tools/.bill-state.json
+          key: bill-state-${{ runner.os }}
+
+      - name: Watch for new bills
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          INVOICE_FILE: tools/.bill-state.json
+        run: python tools/notify_bills.py | tee output.log
+
+      - name: Save watcher state
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: tools/.bill-state.json
+          key: bill-state-${{ runner.os }}
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watcher-log
+          path: output.log
+          if-no-files-found: ignore

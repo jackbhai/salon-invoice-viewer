@@ -3,3 +3,7 @@ dist
 .DS_Store
 *.local
 npm-debug.log*
+
+# watcher state
+.bill-state.json
+tools/.bill-state.json
