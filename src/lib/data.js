@@ -264,26 +264,29 @@ export function weekdayBreakdown(filtered) {
   return [1, 2, 3, 4, 5, 6, 0].map((d) => arr[d])
 }
 
-// ---- Comparison (this period vs previous period) ----
+// ---- Comparison (this period vs previous period of equal length) ----
 export function periodComparison(filtered, range) {
-  // split by midpoint date into two halves of a period and compare
   const now = new Date()
-  let periodStart = now, prevStart = now
-  const bounds = rangeBounds(range, now)
-  if (bounds) {
-    periodStart = bounds.start
-    const len = bounds.end - bounds.start
-    prevStart = new Date(periodStart.getTime() - (len + 1))
+  now.setHours(23, 59, 59, 999)
+  let curStart, prevStart, prevEnd
+  const b = rangeBounds(range, now)
+  if (b) {
+    curStart = b.start
+    prevEnd = new Date(curStart.getTime() - 1)
+    const len = b.end - b.start + 1
+    prevStart = new Date(curStart.getTime() - len)
   } else {
-    // all time: compare last 12 months vs previous 12 months
-    periodStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-    prevStart = new Date(now.getFullYear(), now.getMonth() - 23, 1)
+    // all time: last 12 months vs previous 12 months
+    curStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    prevEnd = new Date(curStart.getTime() - 1)
+    const len = now - curStart + 1
+    prevStart = new Date(curStart.getTime() - len)
   }
   let cur = 0, prev = 0, cc = 0, pc = 0
   for (const i of filtered) {
     if (!i.date) continue
-    if (i.date >= periodStart && i.date <= now) { cur += i.total; cc++ }
-    else if (i.date >= prevStart && i.date < periodStart) { prev += i.total; pc++ }
+    if (i.date >= curStart && i.date <= now) { cur += i.total; cc++ }
+    else if (i.date >= prevStart && i.date <= prevEnd) { prev += i.total; pc++ }
   }
   const growth = prev > 0 ? ((cur - prev) / prev) * 100 : (cc > 0 ? 100 : 0)
   return { current: cur, previous: prev, growth, currentCount: cc, previousCount: pc }
