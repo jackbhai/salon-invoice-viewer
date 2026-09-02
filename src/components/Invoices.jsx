@@ -8,6 +8,7 @@ const PAGE = 20
 
 export default function Invoices({ data }) {
   const invoices = data.invoices
+  const [, force] = useState(false)
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState({ from: '', to: '', pay: '', provider: '', service: '', sort: 'date-desc', min: '', max: '', onlyDue: false, onlyUntagged: false, noMobile: false })
   const [showFilter, setShowFilter] = useState(false)
@@ -187,7 +188,15 @@ export default function Invoices({ data }) {
         </div>
       )}
 
-      {selected && <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <InvoiceDetail
+          invoice={selected}
+          shop={data.shop}
+          onClose={() => setSelected(null)}
+          onNote={(id, note) => { const x = invoices.find((i) => i.id === id); if (x) x.note = note; force((v) => !v) }}
+          onMarkPaid={(id) => { const x = invoices.find((i) => i.id === id); if (x) { x._paid_override = true; x.amount_due = 0; } force((v) => !v) }}
+        />
+      )}
     </div>
   )
 }

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, RadialBarChart, RadialBar } from 'recharts'
 import { Wallet, ReceiptText, TrendingUp, Users, CircleDollarSign, ReceiptIndianRupee, Hourglass, BarChart3, CalendarClock, Sun, ChevronRight, Flame } from 'lucide-react'
+
 import { Card, SectionTitle, chartTheme, Stat, RangePicker, PopNum } from './ui.jsx'
-import { aggregate, revenueByMonth, paymentModeBreakdown, serviceBreakdown, formatMoney, fmtDate, rangeBounds, inRange, periodComparison, hourOfDay } from '../lib/data.js'
+import { aggregate, revenueByMonth, revenueByDay, paymentModeBreakdown, serviceBreakdown, discountStats, categoryBreakdown, formatMoney, fmtDate, rangeBounds, inRange, periodComparison, hourOfDay } from '../lib/data.js'
 
 const PIE_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#fb7185', '#60a5fa']
 
@@ -46,6 +47,11 @@ export default function Dashboard({ data, goTab }) {
   }, [range, data.invoices])
   const pct = target > 0 ? Math.min(100, (agg.totalRevenue / target) * 100) : 0
 
+  const [chartMode, setChartMode] = useState('month')
+  const daily = useMemo(() => revenueByDay(filtered, 45), [filtered])
+  const disc = useMemo(() => discountStats(filtered), [filtered])
+  const cats = useMemo(() => categoryBreakdown(filtered), [filtered])
+
   const busyHour = useMemo(() => {
     let best = hours[0]
     for (const h of hours) if (h.count > best.count) best = h
@@ -71,15 +77,24 @@ export default function Dashboard({ data, goTab }) {
         <Stat icon={BarChart3} tone="amber" label="Taxable Value" value={formatMoney(agg.taxable)} sub={`${agg.itemRows.toLocaleString('en-IN')} items sold`} />
         <Stat icon={Hourglass} tone="red" label="Outstanding Due" value={formatMoney(agg.totalDue)} sub={agg.count ? (100 * agg.totalDue / (agg.totalPaid + agg.totalDue)).toFixed(1) + '% of revenue' : '—'} />
         <Stat icon={Sun} tone="cyan" label="Date Range" value={fmtDate(agg.minDate)} sub={agg.maxDate ? `→ ${fmtDate(agg.maxDate)}` : ''} />
+        <Stat icon={Flame} tone="amber" label="Discounts given" value={formatMoney(disc.discountTotal)} sub={`${disc.discounted} bills`} />
+        <Stat icon={BarChart3} tone="green" label="Avg items / bill" value={disc.avgItems.toFixed(2)} sub={`${disc.itemsSold.toLocaleString('en-IN')} items`} />
       </div>
 
       {/* today live + target */}
       <div className="grid lg:grid-cols-3 gap-4">
         <Card className="p-4 lg:p-5 lg:col-span-2">
-          <SectionTitle title="Revenue Trend" sub="Monthly collections in selected range" />
+          <SectionTitle title="Revenue Trend"
+            sub={chartMode === 'month' ? 'Monthly collections in selected range' : 'Daily collections (last 45 days)'}
+            right={
+              <div className="flex gap-1">
+                <button onClick={() => setChartMode('month')} className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${chartMode === 'month' ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40' : 'bg-amoled-card text-amoled-muted border-amoled-border2'}`}>Month</button>
+                <button onClick={() => setChartMode('day')} className={`px-2.5 py-1 rounded-lg text-xs font-medium border ${chartMode === 'day' ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40' : 'bg-amoled-card text-amoled-muted border-amoled-border2'}`}>Day</button>
+              </div>
+            } />
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <AreaChart data={chartMode === 'month' ? monthly : daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.4} />
@@ -175,6 +190,26 @@ export default function Dashboard({ data, goTab }) {
           </div>
         </Card>
       </div>
+
+      {/* category breakdown */}
+      <Card className="p-4 lg:p-5">
+        <SectionTitle title="Category Breakdown" sub="Revenue split by service category" />
+        <div className="flex flex-wrap gap-2">
+          {cats.map((c, i) => {
+            const total = cats.reduce((s, x) => s + x.value, 0) || 1
+            return (
+              <div key={c.name} className="rounded-xl border border-amoled-border bg-amoled-card2 p-3 min-w-[130px]">
+                <div className="text-[11px] text-amoled-muted truncate">{c.name}</div>
+                <div className="text-base font-extrabold num text-cyan-300 mt-0.5">{formatMoney(c.value)}</div>
+                <div className="text-[10px] text-amoled-dim num">{(100 * c.value / total).toFixed(0)}%</div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-amoled-card overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: (100 * c.value / total) + '%', background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
 
       {/* hour heatmap */}
       <Card className="p-4 lg:p-5">

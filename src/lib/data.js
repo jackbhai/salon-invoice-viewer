@@ -142,6 +142,8 @@ export function normalizeInvoice(inv, meta) {
     advance: toNum(inv.advance ?? inv.totals?.Advance),
     amount_paid: paid,
     amount_due: due || (total - paid),
+    note: inv.note || '',
+    _paid_override: !!inv._paid_override,
     items,
     raw: inv,
   }
@@ -565,6 +567,72 @@ export function mergeInvoices(existing, incoming) {
     if (!byId.has(i.id)) { byId.set(i.id, i); added++ }
   }
   return { merged: [...byId.values()], added }
+}
+
+// ---- category breakdown (by revenue) ----
+export function categoryBreakdown(invoices) {
+  const map = new Map()
+  for (const i of invoices) for (const it of i.items) {
+    if (!it.service) continue
+    const cat = categorize(it.service)
+    map.set(cat, (map.get(cat) || 0) + (it.taxable_value || it.rate * it.qty || 0))
+  }
+  return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+}
+
+// ---- daily revenue for a chart ----
+export function revenueByDay(filtered, limit = 30) {
+  const map = new Map()
+  for (const i of filtered) {
+    if (!i.date) continue
+    const key = i.date.toISOString().split('T')[0]
+    let e = map.get(key); if (!e) { e = { key, revenue: 0, count: 0 }; map.set(key, e) }
+    e.revenue += i.total; e.count += 1
+  }
+  let arr = [...map.values()].sort((a, b) => a.key < b.key ? -1 : 1)
+  if (limit && arr.length > limit) arr = arr.slice(-limit)
+  return arr
+}
+
+// ---- monthly comparison (this year vs last year, same months) ----
+export function monthlyCompare(invoices) {
+  const now = new Date().getFullYear()
+  const curMap = new Map()
+  const prevMap = new Map()
+  for (const i of invoices) {
+    if (!i.date) continue
+    const mo = i.date.getMonth()
+    if (i.date.getFullYear() === now) curMap.set(mo, (curMap.get(mo) || 0) + i.total)
+    else if (i.date.getFullYear() === now - 1) prevMap.set(mo, (prevMap.get(mo) || 0) + i.total)
+  }
+  const out = []
+  for (let mo = 0; mo < 12; mo++) {
+    const c = curMap.get(mo) || 0
+    const p = prevMap.get(mo) || 0
+    if (c > 0 || p > 0) out.push({ key: `${mo + 1}`, current: c, previous: p })
+  }
+  return out
+}
+
+// ---- discount & items stats ----
+export function discountStats(invoices) {
+  let discounted = 0, discountTotal = 0, itemsSold = 0
+  for (const i of invoices) { if (i.discount > 0) { discounted++; discountTotal += i.discount } itemsSold += i.items.reduce((s, it) => s + it.qty, 0) }
+  const avgItems = invoices.length ? itemsSold / invoices.length : 0
+  return { discounted, discountTotal, itemsSold, avgDiscount: discounted ? discountTotal / discounted : 0, avgItems }
+}
+
+// ---- outstanding dues by customer (collection) ----
+export function dueCustomers(invoices) {
+  const map = new Map()
+  for (const i of invoices) {
+    if (i.amount_due <= 0) continue
+    const k = (i.customer_name || '—').trim() || '—'
+    let e = map.get(k); if (!e) { e = { name: k, due: 0, count: 0, mobile: '' }; map.set(k, e) }
+    e.due += i.amount_due; e.count += 1
+    if (!e.mobile && i.mobile) e.mobile = i.mobile
+  }
+  return [...map.values()].sort((a, b) => b.due - a.due)
 }
 
 // ---- export builders ----

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, AreaChart, Area, Legend } from 'recharts'
 import { Download, FileSpreadsheet, Landmark } from 'lucide-react'
 import { Card, SectionTitle, chartTheme, Stat } from './ui.jsx'
-import { aggregate, revenueByMonth, paymentModeBreakdown, formatMoney, toNum, gstMonthly, buildCSV, fmtMonth } from '../lib/data.js'
+import { aggregate, revenueByMonth, paymentModeBreakdown, formatMoney, toNum, gstMonthly, buildCSV, fmtMonth, dueCustomers, monthlyCompare, categoryBreakdown } from '../lib/data.js'
 
 const COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#fb7185', '#60a5fa', '#f87171', '#a3e635']
 
@@ -15,6 +15,9 @@ export default function Analytics({ data }) {
   const byProvider = useMemo(() => providerRevenue(invoices, 12), [invoices])
   const payModes = useMemo(() => paymentModeBreakdown(invoices), [invoices])
   const topCustomers = useMemo(() => topCustomersData(invoices, 10), [invoices])
+  const dues = useMemo(() => dueCustomers(invoices).slice(0, 15), [invoices])
+  const yoy = useMemo(() => monthlyCompare(invoices), [invoices])
+  const cats = useMemo(() => categoryBreakdown(invoices), [invoices])
 
   // year filter
   const years = useMemo(() => { const s = new Set(invoices.map((i) => i.date?.getFullYear()).filter(Boolean)); return ['all', ...[...s].sort()] }, [invoices])
@@ -201,6 +204,47 @@ export default function Analytics({ data }) {
           </div>
         </Card>
       </div>
+
+      {/* year over year */}
+      <Card className="p-4 lg:p-5">
+        <SectionTitle title="Year-over-Year" sub="This year vs last year by month" />
+        <div className="h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={yoy} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid vertical={false} stroke={chartTheme.grid} />
+              <XAxis dataKey="key" stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} />
+              <YAxis stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} width={44} tickFormatter={compact} />
+              <Tooltip {...chartTheme.tooltip} formatter={(v, n) => [formatMoney(v), n === 'previous' ? 'Last year' : 'This year']} />
+              <Legend wrapperStyle={{ color: '#9a9aa3', fontSize: 12 }} />
+              <Bar dataKey="previous" name="previous" fill="#a78bfa" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="current" name="current" fill="#22d3ee" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {cats.slice(0, 6).map((c, i) => (
+            <span key={c.name} className="text-[11px] px-2 py-1 rounded-md bg-amoled-card2 border border-amoled-border2 text-amoled-muted num">{c.name} <span className="text-cyan-300">{formatMoney(c.value)}</span></span>
+          ))}
+        </div>
+      </Card>
+
+      {/* outstanding dues */}
+      <Card className="p-4 lg:p-5">
+        <SectionTitle title="Outstanding Dues" sub="Pending collection by customer (top 15)" />
+        <div className="space-y-2">
+          {dues.map((d) => (
+            <div key={d.name} className="flex items-center gap-3 text-sm">
+              <div className="grid place-items-center w-7 h-7 rounded-full bg-rose-500/15 text-rose-300 font-bold text-xs shrink-0">{d.name.slice(0, 1).toUpperCase()}</div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium">{d.name}</div>
+                <div className="text-[11px] text-amoled-dim">{d.count} bill{d.count > 1 ? 's' : ''}{d.mobile ? ` · ${d.mobile}` : ''}</div>
+              </div>
+              <div className="text-sm font-bold num text-rose-300">{formatMoney(d.due)}</div>
+            </div>
+          ))}
+          {dues.length === 0 && <div className="text-xs text-emerald-300">🎉 No outstanding dues.</div>}
+        </div>
+      </Card>
 
       <Card className="p-4 lg:p-5">
         <SectionTitle title="Provider Summary" sub="Invoices & revenue per provider" />

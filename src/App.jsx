@@ -58,6 +58,7 @@ export default function App() {
           <div className="min-w-0">
             <div className="text-base font-bold tracking-tight truncate flex items-center gap-2">
               <Sparkles size={15} className="grad-text hidden sm:block" /> {tabLabel(tab)}
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">v3</span>
             </div>
             <p className="text-[11px] text-amoled-dim truncate">{dataset ? `${dataset.invoices.length.toLocaleString('en-IN')} invoices · ${dataset.shop?.name || dataset.label || 'dataset'}` : 'No dataset loaded'}</p>
           </div>
