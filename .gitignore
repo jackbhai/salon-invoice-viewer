@@ -7,3 +7,5 @@ npm-debug.log*
 # watcher state
 .bill-state.json
 tools/.bill-state.json
+__pycache__/
+*.pyc
