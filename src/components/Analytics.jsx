@@ -1,52 +1,140 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, AreaChart, Area, Legend } from 'recharts'
+import { Download, FileSpreadsheet, Landmark } from 'lucide-react'
 import { Card, SectionTitle, chartTheme, Stat } from './ui.jsx'
-import { aggregate, revenueByMonth, topBucket, paymentModeBreakdown, formatMoney, toNum } from '../lib/data.js'
+import { aggregate, revenueByMonth, paymentModeBreakdown, formatMoney, toNum, gstMonthly, buildCSV, fmtMonth } from '../lib/data.js'
 
 const COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#fb7185', '#60a5fa', '#f87171', '#a3e635']
 
 export default function Analytics({ data }) {
   const invoices = data.invoices
+  const [year, setYear] = useState('all')
   const agg = useMemo(() => aggregate(invoices), [invoices])
   const monthly = useMemo(() => revenueByMonth(invoices), [invoices])
-  const byProvider = useMemo(() => providerRevenue(invoices, 10), [invoices])
-  const byProviderCount = useMemo(() => topBucketCount(invoices), [invoices])
+  const gst = useMemo(() => gstMonthly(invoices), [invoices])
+  const byProvider = useMemo(() => providerRevenue(invoices, 12), [invoices])
   const payModes = useMemo(() => paymentModeBreakdown(invoices), [invoices])
   const topCustomers = useMemo(() => topCustomersData(invoices, 10), [invoices])
-  const byDay = useMemo(() => byDayOfWeek(invoices), [invoices])
-  const taxTotal = useMemo(() => invoices.reduce((s, i) => s + i.sgst + i.cgst, 0), [invoices])
+
+  // year filter
+  const years = useMemo(() => { const s = new Set(invoices.map((i) => i.date?.getFullYear()).filter(Boolean)); return ['all', ...[...s].sort()] }, [invoices])
+  const yearMonthly = useMemo(() => (year === 'all' ? monthly : monthly.filter((m) => m.key.startsWith(year + '-'))), [monthly, year])
+  const yearGst = useMemo(() => (year === 'all' ? gst : gst.filter((m) => m.key.startsWith(year + '-'))), [gst, year])
+
+  const cashMode = payModes.find((p) => /cash/i.test(p.name))
+  const digital = payModes.filter((p) => !/cash/i.test(p.name)).reduce((s, p) => s + p.value, 0)
+  const cash = cashMode ? cashMode.value : 0
+  const cashPct = agg.totalRevenue ? (100 * cash / agg.totalRevenue) : 0
+
+  const taxTotal = invoices.reduce((s, i) => s + i.sgst + i.cgst, 0)
+
+  function downloadBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); URL.revokeObjectURL(a.href) }
+
+  function exportGSTR1() {
+    const rows = yearGst.map((m) => [
+      m.key + '-01', m.count, m.taxable.toFixed(2), m.sgst.toFixed(2), m.cgst.toFixed(2), m.sgst.toFixed(2), m.total.toFixed(2),
+    ])
+    const csv = buildCSV(rows, ['Month', 'Invoices', 'Taxable Value', 'SGST', 'CGST', 'IGST', 'Total'])
+    downloadBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), `gstr-summary-${year}.csv`)
+  }
+  function exportMonthlyReport() {
+    const rows = yearMonthly.map((m) => [fmtMonth(m.key), m.count, m.taxable.toFixed(2), m.sgst.toFixed(2), m.cgst.toFixed(2), m.revenue.toFixed(2), m.paid.toFixed(2), m.due.toFixed(2)])
+    const csv = buildCSV(rows, ['Month', 'Invoices', 'Taxable', 'SGST', 'CGST', 'Total', 'Paid', 'Due'])
+    downloadBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }), `monthly-report-${year}.csv`)
+  }
 
   return (
     <div className="space-y-6 animate-fadein">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Stat icon={null} label="Revenue" value={formatMoney(agg.totalRevenue)} tone="cyan" />
+      <div className="flex items-center gap-2">
+        <SectionTitle title="Analytics" sub="Deep breakdowns, GST & trends" />
+        <div className="ml-auto flex items-center gap-2">
+          <select value={year} onChange={(e) => setYear(e.target.value)} className="ipt w-32">
+            {years.map((y) => <option key={y} value={y}>{y === 'all' ? 'All years' : y}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stagger">
+        <Stat icon={null} label="Revenue (selected)" value={formatMoney(agg.totalRevenue)} tone="cyan" />
         <Stat icon={null} label="Invoices" value={agg.count.toLocaleString('en-IN')} tone="violet" />
         <Stat icon={null} label="Avg. per customer" value={formatMoney(agg.avgCust)} tone="pink" />
         <Stat icon={null} label="GST Collected" value={formatMoney(taxTotal)} tone="amber" />
       </div>
 
-      {/* cust + paid trend */}
+      {/* monthly table */}
       <Card className="p-4 lg:p-5">
-        <SectionTitle title="Amount Paid vs Due" sub="Collection efficiency over time" />
-        <div className="h-60">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={monthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid vertical={false} stroke={chartTheme.grid} />
-              <XAxis dataKey="key" stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} />
-              <YAxis stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} width={48} tickFormatter={compact} />
-              <Tooltip {...chartTheme.tooltip} formatter={(v, n) => [formatMoney(v), n]} />
-              <Legend wrapperStyle={{ color: '#9a9aa3', fontSize: 12 }} />
-              <Line type="monotone" dataKey="paid" name="Paid" stroke="#34d399" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="due" name="Due" stroke="#fb7185" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
+        <SectionTitle title="Monthly GST Summary"
+          sub="Taxable, SGST, CGST per month"
+          right={<div className="flex gap-2">
+            <button onClick={exportMonthlyReport} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-amoled-border2 text-amoled-muted hover:text-amoled-text"><FileSpreadsheet size={13} /> Monthly</button>
+            <button onClick={exportGSTR1} className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/10"><Landmark size={13} /> GSTR-1 CSV</button>
+          </div>} />
+        <div className="overflow-x-auto nice-scroll">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-[11px] text-amoled-dim uppercase tracking-wide">
+              <th className="py-2 pr-4 font-medium">Month</th><th className="py-2 pr-4 font-medium text-right">Invoices</th>
+              <th className="py-2 pr-4 font-medium text-right">Taxable</th><th className="py-2 pr-4 font-medium text-right">SGST</th>
+              <th className="py-2 pr-4 font-medium text-right">CGST</th><th className="py-2 font-medium text-right">Total</th>
+            </tr></thead>
+            <tbody className="border-t border-amoled-border">
+              {yearGst.slice(-24).map((m) => (
+                <tr key={m.key} className="border-b border-amoled-border/60 last:border-0">
+                  <td className="py-2 pr-4 font-medium">{fmtMonth(m.key)}</td>
+                  <td className="py-2 pr-4 text-right num text-amoled-muted">{m.count}</td>
+                  <td className="py-2 pr-4 text-right num">{formatMoney(m.taxable)}</td>
+                  <td className="py-2 pr-4 text-right num text-violet-300">{formatMoney(m.sgst)}</td>
+                  <td className="py-2 pr-4 text-right num text-cyan-300">{formatMoney(m.cgst)}</td>
+                  <td className="py-2 text-right num font-semibold text-amoled-text">{formatMoney(m.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </Card>
 
+      {/* paid vs due / cash vs digital */}
       <div className="grid lg:grid-cols-2 gap-4">
-        {/* provider revenue */}
         <Card className="p-4 lg:p-5">
-          <SectionTitle title="Revenue by Provider" sub="Service providers ranked by revenue" />
+          <SectionTitle title="Amount Paid vs Due" sub="Collection efficiency" />
+          <div className="h-52">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={yearMonthly} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke={chartTheme.grid} />
+                <XAxis dataKey="key" stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} tickFormatter={(k) => k ? k.slice(5, 7) : ''} />
+                <YAxis stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} width={44} tickFormatter={compact} />
+                <Tooltip {...chartTheme.tooltip} formatter={(v, n) => [formatMoney(v), n]} labelFormatter={(k) => fmtMonth(k)} />
+                <Legend wrapperStyle={{ color: '#9a9aa3', fontSize: 12 }} />
+                <Line type="monotone" dataKey="paid" name="Paid" stroke="#34d399" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="due" name="Due" stroke="#fb7185" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card className="p-4 lg:p-5">
+          <SectionTitle title="Cash vs Digital" sub={`${cashPct.toFixed(0)}% collected in cash`} />
+          <div className="flex items-center justify-around">
+            <div className="text-center">
+              <div className="text-2xl font-extrabold num text-emerald-300">✓ {formatMoney(cash)}</div>
+              <div className="text-xs text-amoled-dim mt-1">Cash</div>
+            </div>
+            <div className="text-xl font-bold text-amoled-dim">vs</div>
+            <div className="text-center">
+              <div className="text-2xl font-extrabold num text-cyan-300">{formatMoney(digital)}</div>
+              <div className="text-xs text-amoled-dim mt-1">Digital</div>
+            </div>
+          </div>
+          <div className="mt-4 flex h-2 rounded-full overflow-hidden bg-amoled-card2">
+            <div className="bg-emerald-400" style={{ width: cashPct + '%' }} />
+            <div className="bg-cyan-400" style={{ width: (100 - cashPct) + '%' }} />
+          </div>
+        </Card>
+      </div>
+
+      {/* provider + top customers */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card className="p-4 lg:p-5">
+          <SectionTitle title="Revenue by Provider" sub="Ranked by revenue" />
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byProvider} layout="vertical" margin={{ top: 0, right: 12, left: 4, bottom: 0 }}>
@@ -62,7 +150,6 @@ export default function Analytics({ data }) {
           </div>
         </Card>
 
-        {/* top customers */}
         <Card className="p-4 lg:p-5">
           <SectionTitle title="Top Customers" sub="Highest total spend" />
           <div className="space-y-2 max-h-64 overflow-y-auto nice-scroll pr-1">
@@ -78,7 +165,7 @@ export default function Analytics({ data }) {
         </Card>
       </div>
 
-      {/* payment modes + day of week */}
+      {/* payment split + weekday */}
       <div className="grid lg:grid-cols-2 gap-4">
         <Card className="p-4 lg:p-5">
           <SectionTitle title="Payment Mode Split" sub="Revenue distribution" />
@@ -101,13 +188,13 @@ export default function Analytics({ data }) {
           <SectionTitle title="Revenue by Weekday" sub="Busiest days of the week" />
           <div className="h-52">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={byDay} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <BarChart data={weekdayData(invoices)} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke={chartTheme.grid} />
                 <XAxis dataKey="name" stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} />
                 <YAxis stroke="none" tick={chartTheme.tick} tickLine={false} axisLine={false} width={44} tickFormatter={compact} />
                 <Tooltip {...chartTheme.tooltip} formatter={(v) => [formatMoney(v), 'Revenue']} />
                 <Bar dataKey="revenue" radius={[6, 6, 0, 0]}>
-                  {byDay.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  {weekdayData(invoices).map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -115,25 +202,22 @@ export default function Analytics({ data }) {
         </Card>
       </div>
 
-      {/* provider count table */}
       <Card className="p-4 lg:p-5">
-        <SectionTitle title="Provider Summary" sub="Invoices handled & revenue generated" />
+        <SectionTitle title="Provider Summary" sub="Invoices & revenue per provider" />
         <div className="overflow-x-auto nice-scroll">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[11px] text-amoled-dim uppercase tracking-wide">
-                <th className="py-2 pr-4 font-medium">Provider</th>
-                <th className="py-2 pr-4 font-medium text-right">Invoices</th>
-                <th className="py-2 pr-4 font-medium text-right">Items</th>
-                <th className="py-2 font-medium text-right">Revenue</th>
-              </tr>
-            </thead>
+            <thead><tr className="text-left text-[11px] text-amoled-dim uppercase tracking-wide">
+              <th className="py-2 pr-4 font-medium">Provider</th><th className="py-2 pr-4 font-medium text-right">Invoices</th>
+              <th className="py-2 pr-4 font-medium text-right">Items</th><th className="py-2 pr-4 font-medium text-right">Customers</th>
+              <th className="py-2 font-medium text-right">Revenue</th>
+            </tr></thead>
             <tbody className="border-t border-amoled-border">
-              {byProviderCount.map((p) => (
+              {providerSummary(invoices).map((p) => (
                 <tr key={p.name} className="border-b border-amoled-border/60 last:border-0">
-                  <td className="py-2.5 pr-4 text-amoled-text font-medium">{p.name}</td>
+                  <td className="py-2.5 pr-4 font-medium">{p.name}</td>
                   <td className="py-2.5 pr-4 text-right num text-amoled-muted">{p.count}</td>
                   <td className="py-2.5 pr-4 text-right num text-amoled-muted">{p.items}</td>
+                  <td className="py-2.5 pr-4 text-right num text-amoled-muted">{p.customers}</td>
                   <td className="py-2.5 text-right num text-cyan-300 font-semibold">{formatMoney(p.revenue)}</td>
                 </tr>
               ))}
@@ -147,57 +231,39 @@ export default function Analytics({ data }) {
 
 function providerRevenue(invoices, limit) {
   const map = new Map()
-  for (const i of invoices) {
-    for (const it of i.items) {
-      const name = (it.provider || 'N/A').trim() || 'N/A'
-      let b = map.get(name); if (!b) { b = { name, revenue: 0, count: 0 }; map.set(name, b) }
-      b.revenue += (it.taxable_value || it.rate * it.qty || 0)
-      b.count += 1
-    }
+  for (const i of invoices) for (const it of i.items) {
+    const name = (it.provider || 'N/A').trim() || 'N/A'
+    if (!map.has(name)) map.set(name, { name, revenue: 0, count: 0 })
+    const b = map.get(name); b.revenue += (it.taxable_value || it.rate * it.qty || 0); b.count += 1
   }
-  return [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, limit)
-    .map((b) => ({ ...b, revenue: Math.round(b.revenue) }))
+  return [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, limit).map((b) => ({ ...b, revenue: Math.round(b.revenue) }))
 }
-
-function topBucketCount(invoices) {
+function topCustomersData(invoices, limit) {
+  const map = new Map()
+  for (const i of invoices) { const k = (i.customer_name || '—').trim() || '—'; let c = map.get(k); if (!c) { c = { name: k, count: 0, revenue: 0 }; map.set(k, c) }; c.count += 1; c.revenue += i.total }
+  return [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, limit)
+}
+function providerSummary(invoices) {
   const map = new Map()
   for (const i of invoices) {
     const provs = new Set()
     i.items.forEach((it) => it.provider && provs.add(it.provider.trim()))
     for (const name of provs) {
-      let b = map.get(name); if (!b) { b = { name, count: 0, items: 0, revenue: 0 }; map.set(name, b) }
-      b.count += 1
-      b.items += i.items.filter((it) => it.provider && it.provider.trim() === name).length
-      b.revenue += i.total
+      let w = map.get(name); if (!w) { w = { name, count: 0, items: 0, customers: new Set(), revenue: 0 }; map.set(name, w) }
+      w.count += 1
+      w.items += i.items.filter((it) => it.provider && it.provider.trim() === name).length
+      if (i.customer_name) w.customers.add(i.customer_name.trim())
+      w.revenue += i.items.filter((it) => it.provider && it.provider.trim() === name).reduce((s, it) => s + (it.taxable_value || it.rate * it.qty || 0), 0)
     }
   }
-  const out = [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 15)
-  return out.map((b) => ({ ...b, revenue: Math.round(b.revenue) }))
+  return [...map.values()].map((w) => ({ ...w, customers: w.customers.size, revenue: Math.round(w.revenue) })).sort((a, b) => b.revenue - a.revenue).slice(0, 15)
 }
-
-function topCustomersData(invoices, limit) {
-  const map = new Map()
-  for (const i of invoices) {
-    const key = (i.customer_name || '—').trim() || '—'
-    let c = map.get(key); if (!c) { c = { name: key, count: 0, revenue: 0 }; map.set(key, c) }
-    c.count += 1; c.revenue += i.total
-  }
-  return [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, limit)
-}
-
-function byDayOfWeek(invoices) {
+function weekdayData(invoices) {
   const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const arr = names.map((n) => ({ name: n, revenue: 0, count: 0 }))
-  for (const i of invoices) {
-    if (!i.date) continue
-    const d = i.date.getDay()
-    arr[d].revenue += i.total
-    arr[d].count += 1
-  }
-  // order Mon..Sun
+  const arr = names.map((n) => ({ name: n, revenue: 0 }))
+  for (const i of invoices) if (i.date) arr[i.date.getDay()].revenue += i.total
   return [1, 2, 3, 4, 5, 6, 0].map((d) => arr[d])
 }
-
 function compact(v) {
   if (v >= 100000) return (v / 100000).toFixed(1) + 'L'
   if (v >= 1000) return (v / 1000).toFixed(1) + 'k'

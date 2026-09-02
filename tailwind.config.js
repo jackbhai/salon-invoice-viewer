@@ -31,10 +31,12 @@ export default {
       },
       boxShadow: {
         glow: '0 0 0 1px rgba(34,211,238,0.15), 0 0 24px rgba(34,211,238,0.10)',
+        'glow-lg': '0 0 0 1px rgba(34,211,238,0.2), 0 8px 40px rgba(34,211,238,0.18)',
       },
       animation: {
-        fadein: 'fadein .25s ease-out',
-        slideup: 'slideup .28s cubic-bezier(.16,1,.3,1)',
+        fadein: 'fadein .3s ease-out',
+        slideup: 'slideup .35s cubic-bezier(.16,1,.3,1)',
+        'spin-slow': 'spin 1.2s linear infinite',
       },
       keyframes: {
         fadein: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },

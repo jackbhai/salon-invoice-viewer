@@ -1,14 +1,16 @@
 import React, { useRef, useState } from 'react'
-import { FileUp, UploadCloud, RefreshCw, Database, X, CheckCircle2, FileJson, Wand2 } from 'lucide-react'
-import { normalizeData } from '../lib/data.js'
+import { FileUp, UploadCloud, RefreshCw, Database, X, CheckCircle2, Wand2, Merge, ShieldAlert, AlertTriangle } from 'lucide-react'
+import { normalizeData, mergeInvoices, dataQuality } from '../lib/data.js'
 import { makeSample } from '../lib/sample.js'
 
-export default function Upload({ onLoaded, existing }) {
+export default function Upload({ onLoaded, existing, quality }) {
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [merge, setMerge] = useState(!!existing)
   const [error, setError] = useState(null)
   const [ok, setOk] = useState(null)
+  const [report, setReport] = useState(null)
 
   async function loadFile(file) {
     setError(null); setOk(null); setBusy(true)
@@ -18,22 +20,24 @@ export default function Upload({ onLoaded, existing }) {
       const result = normalizeData(json)
       if (!result.invoices.length) throw new Error('No invoices found in this file.')
       result.label = file.name.replace(/\.json$/i, '')
+      // merge or replace
+      if (existing && merge) {
+        const { merged, added } = mergeInvoices(existing.invoices, result.invoices)
+        result.invoices = merged
+        result.meta.addedFromMerge = added
+        result.meta.existingCount = existing.invoices.length
+      }
+      const q = dataQuality(result.invoices)
+      setReport(q)
       await onLoaded(result)
       const total = result.invoices.length
-      setOk(`Successfully loaded ${total.toLocaleString('en-IN')} invoices from "${file.name}".`)
+      setOk(`Loaded ${total.toLocaleString('en-IN')} invoices${merge && existing ? ` (${report?.addedFromMerge ?? 0} new added)` : ''} from "${file.name}".`)
     } catch (e) {
       setError('Could not parse JSON: ' + e.message)
-    } finally {
-      setBusy(false)
-    }
+    } finally { setBusy(false) }
   }
 
-  function onDrop(e) {
-    e.preventDefault()
-    setDragging(false)
-    const f = e.dataTransfer.files?.[0]
-    if (f) loadFile(f)
-  }
+  function onDrop(e) { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files?.[0]; if (f) loadFile(f) }
 
   function useSample() {
     setError(null); setOk(null); setBusy(true)
@@ -42,7 +46,8 @@ export default function Upload({ onLoaded, existing }) {
       const result = normalizeData(s)
       result.label = 'sample-demo-data'
       onLoaded(result)
-      setOk(`Loaded ${result.invoices.length} sample invoices (demo). Make sure to upload your real JSON too.`)
+      setReport(dataQuality(result.invoices))
+      setOk(`Loaded ${result.invoices.length} sample invoices (demo).`)
       setBusy(false)
     }, 150)
   }
@@ -52,81 +57,87 @@ export default function Upload({ onLoaded, existing }) {
       <div>
         <h2 className="text-xl font-bold tracking-tight">Load your invoice data</h2>
         <p className="text-sm text-amoled-muted mt-1">
-          Upload the same JSON format used by your exporter. Works with a full object (<code className="text-cyan-300">{'{ "shop":..., "invoices":[...] }'}</code>), a bare array, or a map of invoice records.
+          Upload the same JSON format used by your exporter. Auto-detects a full object (<code className="text-cyan-300">{'{ "shop":..., "invoices":[...] }'}</code>), a bare array, or a map of invoice records.
         </p>
       </div>
+
+      {/* data quality report */}
+      {quality && (
+        <CardBox title="Data quality report" tone="amber" icon={<ShieldAlert size={16} />}>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+            <QStat label="Total" value={quality.total} />
+            <QStat label="No date" value={quality.noDate} warn={quality.noDate > 0} />
+            <QStat label="No items" value={quality.noItems} warn={quality.noItems > 0} />
+            <QStat label="No customer" value={quality.noCustomer} warn={quality.noCustomer > 0} />
+            <QStat label="No total" value={quality.noTotal} warn={quality.noTotal > 0} />
+            <QStat label="No mobile" value={quality.noMobile} warn={quality.noMobile > 0} />
+            <QStat label="Duplicates" value={quality.dups} warn={quality.dups > 0} />
+            <QStat label="Number gaps" value={quality.gaps} warn={quality.gaps > 0} />
+          </div>
+          {quality.dueAmount > 0 && <div className="mt-3 text-xs text-rose-300">₹{quality.dueAmount.toLocaleString('en-IN', { maximumFractionDigits: 0 })} pending across {quality.dueInvoices} invoices.</div>}
+        </CardBox>
+      )}
 
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
-        className={`cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition ${
-          dragging ? 'border-cyan-400 bg-cyan-500/5' : 'border-amoled-border2 bg-amoled-card hover:border-cyan-500/40'
-        }`}
+        className={`cursor-pointer rounded-2xl border-2 border-dashed p-10 text-center transition ${dragging ? 'border-cyan-400 bg-cyan-500/5 scale-[1.005]' : 'border-amoled-border2 bg-amoled-card hover:border-cyan-500/40'}`}
       >
-        <div className="mx-auto grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-violet-500/20 text-cyan-300">
-          <UploadCloud size={28} />
-        </div>
+        <div className="mx-auto grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-violet-500/20 text-cyan-300 float-soft"><UploadCloud size={28} /></div>
         <p className="mt-4 text-sm font-semibold">Drag & drop your JSON file here</p>
         <p className="text-xs text-amoled-dim mt-1">or tap to browse · .json / .jsonl</p>
-        <button className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 text-black text-sm font-semibold hover:bg-cyan-400">
-          <FileUp size={16} /> Choose file
-        </button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".json,.jsonl,application/json"
-          className="hidden"
-          onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])}
-        />
+        <button className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-500 text-black text-sm font-semibold hover:bg-cyan-400 glow-pulse"><FileUp size={16} /> Choose file</button>
+        <input ref={inputRef} type="file" accept=".json,.jsonl,application/json" className="hidden" onChange={(e) => e.target.files?.[0] && loadFile(e.target.files[0])} />
       </div>
 
+      {existing && (
+        <label className="flex items-center justify-between rounded-xl border border-amoled-border bg-amoled-card p-4 cursor-pointer">
+          <div className="flex items-center gap-2 text-sm">
+            <Merge size={16} className="text-violet-300" /> <span className="font-medium">Merge with existing dataset</span>
+          </div>
+          <button onClick={(e) => { e.preventDefault(); setMerge(!merge) }} className={`w-10 h-6 rounded-full relative transition ${merge ? 'bg-cyan-500' : 'bg-amoled-card2 border border-amoled-border2'}`}>
+            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${merge ? 'left-[18px]' : 'left-0.5'}`} />
+          </button>
+        </label>
+      )}
+
       {busy && <Busy />}
-      {error && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-sm p-4 flex items-start gap-2">
-          <X size={16} className="mt-0.5 shrink-0" /> <span>{error}</span>
-        </div>
-      )}
-      {ok && (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm p-4 flex items-start gap-2">
-          <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> <span>{ok}</span>
-        </div>
-      )}
+      {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-300 text-sm p-4 flex items-start gap-2"><X size={16} className="mt-0.5 shrink-0" /><span>{error}</span></div>}
+      {ok && <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-sm p-4 flex items-start gap-2"><CheckCircle2 size={16} className="mt-0.5 shrink-0" /><span>{ok}</span></div>}
 
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="rounded-xl border border-amoled-border bg-amoled-card p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Database size={16} className="text-violet-300" /> Live preview
-          </div>
-          <p className="text-xs text-amoled-muted mt-2 leading-relaxed">
-            Your data stays <strong className="text-amoled-text">in your browser</strong> (local storage). Nothing is uploaded to any server.
-            {existing ? ` Currently loaded: ${existing.invoices.length.toLocaleString('en-IN')} invoices.` : ''}
-          </p>
+          <div className="flex items-center gap-2 text-sm font-semibold"><Database size={16} className="text-violet-300" /> Live preview</div>
+          <p className="text-xs text-amoled-muted mt-2 leading-relaxed">Your data stays <strong className="text-amoled-text">in your browser</strong> (IndexedDB). Nothing is uploaded to a server. {existing ? `Currently loaded: ${existing.invoices.length.toLocaleString('en-IN')} invoices.` : ''}</p>
         </div>
         <div className="rounded-xl border border-amoled-border bg-amoled-card p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Wand2 size={16} className="text-amber-300" /> No file yet?
-          </div>
-          <p className="text-xs text-amoled-muted mt-2 leading-relaxed">Explore with generated demo data to see every feature before you upload your real JSON.</p>
-          <button
-            onClick={useSample}
-            disabled={busy}
-            className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-300 border border-amber-500/30 hover:bg-amber-500/10 disabled:opacity-50"
-          >
-            <RefreshCw size={12} /> Load demo data
-          </button>
+          <div className="flex items-center gap-2 text-sm font-semibold"><Wand2 size={16} className="text-amber-300" /> No file yet?</div>
+          <p className="text-xs text-amoled-muted mt-2 leading-relaxed">Explore with generated demo data to see every feature before uploading real JSON.</p>
+          <button onClick={useSample} disabled={busy} className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-amber-300 border border-amber-500/30 hover:bg-amber-500/10 disabled:opacity-50"><RefreshCw size={12} /> Load demo data</button>
         </div>
       </div>
     </div>
   )
 }
 
-function Busy() {
+function CardBox({ title, tone, icon, children }) {
   return (
-    <div className="rounded-xl border border-amoled-border bg-amoled-card p-4 flex items-center gap-3 text-sm text-amoled-muted">
-      <div className="w-5 h-5 rounded-full border-2 border-amoled-border2 border-t-cyan-400 animate-spin" />
-      Parsing and loading…
+    <div className={`rounded-xl border p-4 ${tone === 'amber' ? 'border-amber-500/30 bg-amber-500/5' : 'border-amoled-border bg-amoled-card'}`}>
+      <div className="flex items-center gap-2 text-sm font-semibold text-amber-200 mb-3">{icon} {title}</div>
+      {children}
     </div>
   )
+}
+function QStat({ label, value, warn }) {
+  return (
+    <div className="rounded-lg bg-amoled-card2 border border-amoled-border p-2">
+      <div className={`text-base font-bold num ${warn ? 'text-rose-300' : 'text-amoled-text'}`}>{value}</div>
+      <div className="text-[10px] text-amoled-dim">{label}</div>
+    </div>
+  )
+}
+function Busy() {
+  return <div className="rounded-xl border border-amoled-border bg-amoled-card p-4 flex items-center gap-3 text-sm text-amoled-muted"><div className="w-5 h-5 rounded-full border-2 border-amoled-border2 border-t-cyan-400 animate-spin" /> Parsing and loading…</div>
 }

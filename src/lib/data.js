@@ -21,19 +21,7 @@ export function toNum(value) {
   return isFinite(n) ? n : 0
 }
 
-// Guarded per-item value: an individual item can never be worth more than the
-// whole invoice it belongs to, so clamp to invoice total. This neutralises lone
-// corrupt data rows (e.g. a package item worth a trillion) that would otherwise
-// blow up a single worker's / service's revenue.
-export function itemValue(item, inv, qtyOverride) {
-  let val = item.taxable_value != null && item.taxable_value !== ''
-    ? Number(item.taxable_value)
-    : Number(item.rate || 0) * Number(qtyOverride ?? item.qty ?? 1)
-  if (!isFinite(val) || val < 0) val = 0
-  const cap = inv && Number(inv.total) > 0 ? Number(inv.total) : Infinity
-  return val > cap ? cap : val
-}
-
+// ---- Date helpers ----
 // invoice_date is like "31-12-2022 10:56 PM" (dd-mm-yyyy)
 export function parseDate(value) {
   if (!value) return null
@@ -64,38 +52,53 @@ export function fmtDateTime(dt) {
   return dt.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-// ---- Normalize incoming JSON into a flat array of normalized invoice objects ----
-export function normalizeData(raw) {
-  let invoices = []
-  let shop = null
-  let meta = { source: 'unknown', totalRaw: 0 }
-
-  if (Array.isArray(raw)) {
-    invoices = raw
-  } else if (raw && typeof raw === 'object') {
-    if (Array.isArray(raw.invoices)) {
-      invoices = raw.invoices
-      shop = raw.shop || null
-    } else if (Array.isArray(raw.data)) {
-      invoices = raw.data
-    } else {
-      // assume it's a map of invoiceNo -> object, or {shop, ...}
-      const keys = Object.keys(raw)
-      if (keys.length && typeof raw[keys[0]] === 'object' && raw[keys[0]] !== null && !Array.isArray(raw[keys[0]])) {
-        meta.source = 'map'
-        invoices = keys.map((k) => (typeof raw[k] === 'object' ? { ...raw[k], _key: k } : raw[k]))
-      } else {
-        meta.source = 'single'
-        invoices = [raw]
-      }
-    }
-  }
-
-  const normalized = invoices.filter(Boolean).map((inv) => normalizeInvoice(inv, meta))
-  return { invoices: normalized, shop, meta }
+export function fmtMonth(key) {
+  // "2024-03" -> "Mar 2024"
+  const [y, m] = key.split('-')
+  const d = new Date(Number(y), Number(m) - 1, 1)
+  return d.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
 }
 
-function normalizeInvoice(inv, meta) {
+// ---- Range presets ----
+export const RANGES = [
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'This week' },
+  { id: 'month', label: 'This month' },
+  { id: 'quarter', label: 'This quarter' },
+  { id: 'year', label: 'This year' },
+  { id: 'all', label: 'All time' },
+  { id: 'custom', label: 'Custom' },
+]
+
+export function rangeBounds(range, now = new Date()) {
+  const start = new Date(now); const end = new Date(now)
+  start.setHours(0, 0, 0, 0); end.setHours(23, 59, 59, 999)
+  switch (range) {
+    case 'today': break
+    case 'week': {
+      const day = (now.getDay() + 6) % 7 // Mon start
+      start.setDate(now.getDate() - day)
+      break
+    }
+    case 'month': start.setDate(1); break
+    case 'quarter': {
+      const q = Math.floor(now.getMonth() / 3)
+      start.setMonth(q * 3, 1)
+      break
+    }
+    case 'year': start.setMonth(0, 1); break
+    default: return null
+  }
+  return { start, end }
+}
+
+export function inRange(inv, bounds) {
+  if (!bounds || !inv.date) return true
+  return inv.date >= bounds.start && inv.date <= bounds.end
+}
+
+// Normalized invoice object
+export function normalizeInvoice(inv, meta) {
   const dt = parseDate(inv.invoice_date || inv.date)
   const rawItems = Array.isArray(inv.items) ? inv.items : []
   const items = rawItems.map((it) => ({
@@ -120,8 +123,8 @@ function normalizeInvoice(inv, meta) {
   const due = toNum(inv.amount_due ?? inv.amountDue ?? (inv.totals?.Amount_Due ?? 0))
 
   return {
-    id: String(inv.inv_mencr ?? inv.id ?? inv._key ?? (inv.invoice_no || '')) ,
-    invoice_no: (inv.invoice_no || inv.invoiceNo || '') ,
+    id: String(inv.inv_mencr ?? inv.id ?? inv._key ?? (inv.invoice_no || '')),
+    invoice_no: (inv.invoice_no || inv.invoiceNo || ''),
     invoice_date_raw: inv.invoice_date || '',
     date: dt,
     customer_name: inv.customer_name || inv.customer || inv.name || '',
@@ -144,6 +147,34 @@ function normalizeInvoice(inv, meta) {
   }
 }
 
+export function normalizeData(raw) {
+  let invoices = []
+  let shop = null
+  let meta = { source: 'unknown', totalRaw: 0 }
+
+  if (Array.isArray(raw)) {
+    invoices = raw
+  } else if (raw && typeof raw === 'object') {
+    if (Array.isArray(raw.invoices)) {
+      invoices = raw.invoices
+      shop = raw.shop || null
+    } else if (Array.isArray(raw.data)) {
+      invoices = raw.data
+    } else {
+      const keys = Object.keys(raw)
+      if (keys.length && typeof raw[keys[0]] === 'object' && raw[keys[0]] !== null && !Array.isArray(raw[keys[0]])) {
+        meta.source = 'map'
+        invoices = keys.map((k) => (typeof raw[k] === 'object' ? { ...raw[k], _key: k } : raw[k]))
+      } else {
+        meta.source = 'single'
+        invoices = [raw]
+      }
+    }
+  }
+  const normalized = invoices.filter(Boolean).map((inv) => normalizeInvoice(inv, meta))
+  return { invoices: normalized, shop, meta }
+}
+
 // ---- Aggregations ----
 export function aggregate(filtered) {
   const totalRevenue = filtered.reduce((s, i) => s + i.total, 0)
@@ -164,43 +195,30 @@ export function aggregate(filtered) {
       if (!maxDate || i.date > maxDate) maxDate = i.date
     }
   }
-
   return {
     count: filtered.length,
     totalRevenue, totalPaid, totalDue, taxable, totalQty, itemRows,
     customers: customers.size, mobiles: mobiles.size,
-    avg, avgCust,
-    minDate, maxDate,
+    avg, avgCust, minDate, maxDate,
   }
 }
 
-// revenue by month (returns array for charts)
 export function revenueByMonth(filtered) {
   const map = new Map()
   for (const i of filtered) {
     if (!i.date) continue
     const key = `${i.date.getFullYear()}-${String(i.date.getMonth() + 1).padStart(2, '0')}`
     let m = map.get(key)
-    if (!m) { m = { key, month: i.date.getMonth(), year: i.date.getFullYear(), revenue: 0, count: 0, paid: 0, due: 0 }; map.set(key, m) }
+    if (!m) { m = { key, month: i.date.getMonth(), year: i.date.getFullYear(), revenue: 0, count: 0, paid: 0, due: 0, taxable: 0, sgst: 0, cgst: 0 }; map.set(key, m) }
     m.revenue += i.total
     m.count += 1
     m.paid += i.amount_paid
     m.due += i.amount_due
+    m.taxable += i.taxable_value
+    m.sgst += i.sgst
+    m.cgst += i.cgst
   }
   return [...map.values()].sort((a, b) => a.key < b.key ? -1 : 1)
-}
-
-// count + revenue by provider / service
-export function topBucket(filtered, field, limit = 8) {
-  const map = new Map()
-  for (const i of filtered) {
-    const name = (i[field] || 'N/A').trim() || 'N/A'
-    let b = map.get(name)
-    if (!b) { b = { name, count: 0, revenue: 0 }; map.set(name, b) }
-    b.count += 1
-    b.revenue += i.total
-  }
-  return [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, limit)
 }
 
 export function paymentModeBreakdown(filtered) {
@@ -209,8 +227,7 @@ export function paymentModeBreakdown(filtered) {
     const name = (i.payment_mode || 'Unspecified').trim() || 'Unspecified'
     map.set(name, (map.get(name) || 0) + i.total)
   }
-  return [...map.entries()].map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
+  return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
 }
 
 export function serviceBreakdown(filtered, limit = 10) {
@@ -221,35 +238,67 @@ export function serviceBreakdown(filtered, limit = 10) {
       map.set(name, (map.get(name) || 0) + (it.taxable_value || 0))
     }
   }
-  return [...map.entries()].map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, limit)
+  return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, limit)
+}
+
+// ---- Hour-of-day heatmap ----
+export function hourOfDay(filtered) {
+  const arr = Array.from({ length: 24 }, (_, h) => ({ hour: h, count: 0, revenue: 0 }))
+  for (const i of filtered) {
+    if (!i.date) continue
+    const h = i.date.getHours()
+    arr[h].count += 1
+    arr[h].revenue += i.total
+  }
+  return arr
+}
+
+export function weekdayBreakdown(filtered) {
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const arr = names.map((n, i) => ({ name: n, revenue: 0, count: 0 }))
+  for (const i of filtered) {
+    if (!i.date) continue
+    arr[i.date.getDay()].revenue += i.total
+    arr[i.date.getDay()].count += 1
+  }
+  return [1, 2, 3, 4, 5, 6, 0].map((d) => arr[d])
+}
+
+// ---- Comparison (this period vs previous period) ----
+export function periodComparison(filtered, range) {
+  // split by midpoint date into two halves of a period and compare
+  const now = new Date()
+  let periodStart = now, prevStart = now
+  const bounds = rangeBounds(range, now)
+  if (bounds) {
+    periodStart = bounds.start
+    const len = bounds.end - bounds.start
+    prevStart = new Date(periodStart.getTime() - (len + 1))
+  } else {
+    // all time: compare last 12 months vs previous 12 months
+    periodStart = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    prevStart = new Date(now.getFullYear(), now.getMonth() - 23, 1)
+  }
+  let cur = 0, prev = 0, cc = 0, pc = 0
+  for (const i of filtered) {
+    if (!i.date) continue
+    if (i.date >= periodStart && i.date <= now) { cur += i.total; cc++ }
+    else if (i.date >= prevStart && i.date < periodStart) { prev += i.total; pc++ }
+  }
+  const growth = prev > 0 ? ((cur - prev) / prev) * 100 : (cc > 0 ? 100 : 0)
+  return { current: cur, previous: prev, growth, currentCount: cc, previousCount: pc }
 }
 
 // ---- Auto MENU MAKER ----
-// Groups every service item seen across invoices into a menu with current/latest price,
-// old price, price change comparison, sale count, revenue and price history.
-export function buildMenu(invoices) {
+export function buildMenu(invoices, overrides = {}) {
   const map = new Map()
-  const sortDates = []
   for (const inv of invoices) {
     for (const it of inv.items) {
       const name = (it.service || '').trim()
       if (!name) continue
       let m = map.get(name)
       if (!m) {
-        m = {
-          name,
-          count: 0,
-          revenue: 0,
-          qty: 0,
-          rates: new Map(),       // rate -> count
-          history: [],            // {date, rate}
-          providers: new Set(),
-          customers: new Set(),
-          lastRate: null,
-          lastDate: null,
-        }
+        m = { name, count: 0, revenue: 0, qty: 0, rates: new Map(), history: [], providers: new Set(), customers: new Set(), lastRate: null, lastDate: null }
         map.set(name, m)
       }
       m.count += 1
@@ -262,9 +311,7 @@ export function buildMenu(invoices) {
         m.history.push({ date: inv.date, rate })
         if (d != null) {
           if (!m.lastDate || d > m.lastDate) { m.lastDate = d; m.lastRate = rate }
-        } else {
-          m.lastRate = rate
-        }
+        } else { m.lastRate = rate }
       }
       if (it.provider) m.providers.add(it.provider.trim())
       if (inv.customer_name) m.customers.add(inv.customer_name.trim())
@@ -274,10 +321,7 @@ export function buildMenu(invoices) {
   const list = [...map.values()].map((m) => {
     const ratesArr = [...m.rates.entries()].sort((a, b) => b[1] - a[1])
     const modeRate = ratesArr.length ? ratesArr[0][0] : m.lastRate
-    // price history timeline (sorted by date, dedup consecutive same rate)
-    const hist = m.history
-      .filter((h) => h.date)
-      .sort((a, b) => a.date - b.date)
+    const hist = m.history.filter((h) => h.date).sort((a, b) => a.date - b.date)
     let timeline = []
     for (let i = 0; i < hist.length; i++) {
       if (i === 0 || hist[i].rate !== hist[i - 1].rate) timeline.push({ date: hist[i].date, rate: hist[i].rate })
@@ -286,40 +330,39 @@ export function buildMenu(invoices) {
     const latestRate = timeline.length ? timeline[timeline.length - 1].rate : m.lastRate
     const prevRate = timeline.length > 1 ? timeline[timeline.length - 2].rate : null
     const change = prevRate != null && prevRate ? (((latestRate - prevRate) / prevRate) * 100) : null
-    const allChange = firstRate ? ((((latestRate - firstRate) / firstRate) * 100)) : null
     const minRate = ratesArr.length ? Math.min(...m.rates.keys()) : m.lastRate
     const maxRate = ratesArr.length ? Math.max(...m.rates.keys()) : m.lastRate
+    // year-wise min price + % change (for comparison table)
+    const yearMap = new Map()
+    for (const hd of hist) {
+      const y = hd.date.getFullYear()
+      if (!yearMap.has(y)) yearMap.set(y, { year: y, sum: 0, n: 0, min: Infinity, max: -Infinity })
+      const e = yearMap.get(y); e.sum += hd.rate; e.n += 1
+      e.min = Math.min(e.min, hd.rate); e.max = Math.max(e.max, hd.rate)
+    }
+    const byYear = [...yearMap.values()]
+      .map((e) => ({ year: e.year, avg: e.sum / e.n, min: e.min, max: e.max }))
+      .sort((a, b) => a.year - b.year)
     return {
       name: m.name,
-      count: m.count,
-      qty: m.qty,
-      revenue: m.revenue,
-      providers: [...m.providers],
-      customers: m.customers.size,
-      modeRate,
-      minRate,
-      maxRate,
-      latestRate,
-      prevRate,
-      firstRate,
-      change,
-      allChange,
-      timeline,
-      rates: ratesArr.map(([rate, c]) => ({ rate, count: c })),
+      count: m.count, qty: m.qty, revenue: m.revenue,
+      providers: [...m.providers], customers: m.customers.size,
+      modeRate, minRate, maxRate, latestRate, prevRate, firstRate, change,
+      timeline, rates: ratesArr.map(([rate, count]) => ({ rate, count })), byYear,
+      override: overrides[m.name] != null ? toNum(overrides[m.name]) : null,
     }
   })
 
-  // categorise menu by the leading word segment, e.g. "HAIR CUT - Men"
   const categories = {}
   for (const m of list) {
     const cat = categorize(m.name)
     if (!categories[cat]) categories[cat] = []
     categories[cat].push(m)
   }
-  // sort categories by total revenue
-  const catOrder = Object.entries(categories).map(([cat, items]) => ({ cat, items }))
-    .sort((a, b) => sum(b.items) - sum(a.items))
-  return { items: list, categories: catOrder, totalItems: list.length }
+  const catOrder = Object.entries(categories).map(([cat, items]) => ({ cat, items })).sort((a, b) => sum(b.items) - sum(a.items))
+  const totalItems = list.length
+  const totalMenuRevenue = list.reduce((s, it) => s + it.revenue, 0)
+  return { items: list, categories: catOrder, totalItems, totalMenuRevenue }
 }
 
 function categorize(name) {
@@ -328,7 +371,6 @@ function categorize(name) {
   const head = (parts[0] || s).trim()
   const kws = ['hair', 'cut', 'beard', 'facial', 'face', 'spa', 'massage', 'mani', 'pedi', 'thread', 'color', 'colour', 'keratin', 'smoothen', 'wax', 'blow', 'head', 'body', 'clean', 'detan', 'de-tan', 'eyebrow', 'para']
   const low = head.toLowerCase()
-  const found = kws.find((k) => low.includes(k))
   if (low.includes('mani')) return 'Nails'
   if (low.includes('pedi')) return 'Nails'
   if (low.includes('facial') || low.includes('face')) return 'Facial & Skin'
@@ -338,23 +380,35 @@ function categorize(name) {
   if (low.includes('beard')) return 'Beard'
   if (low.includes('hair') || low.includes('cut')) return 'Hair'
   if (low.includes('thread') || low.includes('wax') || low.includes('eyebrow')) return 'Wax & Threading'
+  const found = kws.find((k) => low.includes(k))
   return found ? 'Other' : 'Other'
 }
 
 function sum(items) { return items.reduce((s, it) => s + it.revenue, 0) }
 
+export function priceHistoryTrend(menuItem) {
+  const map = new Map()
+  ;(menuItem.timeline || menuItem.history || []).forEach(({ date, rate }) => {
+    if (!date) return
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    let e = map.get(key)
+    if (!e) { e = { key, sum: 0, n: 0, min: Infinity, max: -Infinity }; map.set(key, e) }
+    e.sum += rate; e.n += 1; e.min = Math.min(e.min, rate); e.max = Math.max(e.max, rate)
+  })
+  return [...map.values()]
+    .map((e) => ({ key: e.key, rate: Math.round((e.sum / e.n) * 100) / 100, min: e.min, max: e.max }))
+    .sort((a, b) => (a.key < b.key ? -1 : 1))
+}
+
 // ---- WORKER / PROVIDER STATS ----
-export function workerStats(invoices) {
+export function workerStats(invoices, commission = 0) {
   const map = new Map()
   for (const inv of invoices) {
     const provs = new Set()
     inv.items.forEach((it) => it.provider && provs.add(it.provider.trim()))
     for (const name of provs) {
       let w = map.get(name)
-      if (!w) {
-        w = { name, invoices: 0, items: 0, revenue: 0, customers: new Set(), services: new Map(), totalQty: 0 }
-        map.set(name, w)
-      }
+      if (!w) { w = { name, invoices: 0, items: 0, revenue: 0, customers: new Set(), services: new Map(), totalQty: 0 }; map.set(name, w) }
       w.invoices += 1
       const itemsThisInv = inv.items.filter((it) => it.provider && it.provider.trim() === name)
       w.items += itemsThisInv.length
@@ -368,8 +422,30 @@ export function workerStats(invoices) {
     }
   }
   return [...map.values()]
-    .map((w) => ({ ...w, customers: w.customers.size, services: [...w.services.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12) }))
+    .map((w) => {
+      const commissionAmt = commission > 0 ? (w.revenue * commission) / 100 : 0
+      return {
+        name: w.name, invoices: w.invoices, items: w.items, revenue: w.revenue,
+        customers: w.customers.size, services: [...w.services.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),
+        totalQty: w.totalQty, commissionAmt,
+      }
+    })
     .sort((a, b) => b.revenue - a.revenue)
+}
+
+// monthly performance for one worker
+export function workerMonthly(invoices, name) {
+  const map = new Map()
+  for (const inv of invoices) {
+    if (!inv.date) continue
+    const has = inv.items.some((it) => it.provider && it.provider.trim() === name)
+    if (!has) continue
+    const key = `${inv.date.getFullYear()}-${String(inv.date.getMonth() + 1).padStart(2, '0')}`
+    let e = map.get(key); if (!e) { e = { key, revenue: 0, count: 0 }; map.set(key, e) }
+    e.count += 1
+    e.revenue += inv.items.filter((it) => it.provider && it.provider.trim() === name).reduce((s, it) => s + (it.taxable_value || it.rate * it.qty || 0), 0)
+  }
+  return [...map.values()].sort((a, b) => a.key < b.key ? -1 : 1)
 }
 
 // ---- CUSTOMER PROFILE ----
@@ -390,34 +466,106 @@ export function customerProfile(invoices, name) {
       if (it.provider) providers.add(it.provider.trim())
     }
   }
+  const last = cust.length ? cust[cust.length - 1].date : null
+  const first = cust.length ? cust[0].date : null
+  const daysSinceLast = last ? Math.floor((Date.now() - last.getTime()) / 86400000) : null
   return {
-    name,
-    invoices: cust,
-    count: cust.length,
-    total,
-    paid,
-    due,
+    name, invoices: cust, count: cust.length, total, paid, due,
     avg: cust.length ? total / cust.length : 0,
-    first: cust.length ? cust[0].date : null,
-    last: cust.length ? cust[cust.length - 1].date : null,
+    first, last, daysSinceLast,
     mobile: cust.length ? (cust.find((i) => i.mobile)?.mobile || '') : '',
     pos: cust.length ? (cust.find((i) => i.place_of_supply)?.place_of_supply || '') : '',
     services: [...services.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12),
-    providers: [...providers],
-    modes: [...modes.entries()].sort((a, b) => b[1] - a[1]),
+    providers: [...providers], modes: [...modes.entries()].sort((a, b) => b[1] - a[1]),
   }
 }
 
-// ---- price history trend for a single service (monthly avg) ----
-export function priceHistoryTrend(menuItem) {
+// ---- RFM segmentation / churn ----
+export function customerSegments(invoices) {
   const map = new Map()
-  menuItem.history.forEach(({ date, rate }) => {
-    if (!date) return
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-    let e = map.get(key)
-    if (!e) { e = { key, sum: 0, n: 0 }; map.set(key, e) }
-    e.sum += rate; e.n += 1
-  })
-  return [...map.entries()].map(([key, e]) => ({ key, rate: Math.round((e.sum / e.n) * 100) / 100 }))
-    .sort((a, b) => (a.key < b.key ? -1 : 1))
+  for (const i of invoices) {
+    const key = (i.customer_name || '').trim() || '—'
+    let c = map.get(key)
+    if (!c) { c = { name: key, count: 0, revenue: 0, paid: 0, due: 0, visits: [] }; map.set(key, c) }
+    c.count += 1; c.revenue += i.total; c.paid += i.amount_paid; c.due += i.amount_due
+    if (i.date) c.visits.push(i.date.getTime())
+  }
+  const now = Date.now()
+  const seg = []
+  for (const c of map.values()) {
+    c.visits.sort((a, b) => a - b)
+    const first = c.visits[0]
+    const last = c.visits[c.visits.length - 1]
+    const daysSince = Math.floor((now - last) / 86400000)
+    const spanDays = ((last - first) / 86400000) || 0
+    const freq = c.count > 1 ? c.count / Math.max(1, spanDays / 30) : (c.count / Math.max(1, daysSince / 30))
+    let segment
+    if (c.count === 1) segment = 'New'
+    else if (daysSince <= 30) segment = 'Loyal'
+    else if (daysSince <= 90) segment = 'Active'
+    else if (daysSince <= 180) segment = 'At-Risk'
+    else segment = 'Churned'
+    seg.push({ name: c.name, count: c.count, revenue: c.revenue, due: c.due, freq, segment, daysSince, last: last ? new Date(last) : null, first: first ? new Date(first) : null })
+  }
+  return seg.sort((a, b) => b.revenue - a.revenue)
+}
+
+export function segmentSummary(segments) {
+  const s = { New: { c: 0, v: 0 }, Loyal: { c: 0, v: 0 }, Active: { c: 0, v: 0 }, 'At-Risk': { c: 0, v: 0 }, Churned: { c: 0, v: 0 } }
+  for (const x of segments) { s[x.segment].c += 1; s[x.segment].v += x.revenue }
+  return Object.entries(s).map(([name, v]) => ({ name, count: v.c, value: v.v }))
+}
+
+// ---- GST / GSTR1 style monthly ----
+export function gstMonthly(invoices) {
+  const map = new Map()
+  for (const i of invoices) {
+    if (!i.date) continue
+    const key = `${i.date.getFullYear()}-${String(i.date.getMonth() + 1).padStart(2, '0')}`
+    let e = map.get(key); if (!e) { e = { key, taxable: 0, sgst: 0, cgst: 0, igst: 0, total: 0, count: 0 }; map.set(key, e) }
+    e.taxable += i.taxable_value; e.sgst += i.sgst; e.cgst += i.cgst; e.total += i.total; e.count += 1
+  }
+  return [...map.values()].sort((a, b) => a.key < b.key ? -1 : 1)
+}
+
+// ---- Data quality report ----
+export function dataQuality(invoices) {
+  const noDate = invoices.filter((i) => !i.date).length
+  const noItems = invoices.filter((i) => i.items.length === 0).length
+  const noCustomer = invoices.filter((i) => !i.customer_name).length
+  const noTotal = invoices.filter((i) => !(i.total > 0)).length
+  const dueInvoices = invoices.filter((i) => i.amount_due > 0)
+  const ids = new Set()
+  let dups = 0
+  for (const i of invoices) {
+    if (ids.has(i.id)) dups++
+    ids.add(i.id)
+  }
+  // gap detection by invoice no
+  const nums = invoices.map((i) => i.invoice_no).filter(Boolean).map((s) => Number(String(s).replace(/\D/g, ''))).filter((n) => isFinite(n)).sort((a, b) => a - b)
+  let gaps = 0
+  for (let k = 1; k < nums.length; k++) if (nums[k] - nums[k - 1] > 1) gaps++
+  const noMobile = invoices.filter((i) => !i.mobile).length
+  return {
+    total: invoices.length,
+    noDate, noItems, noCustomer, noTotal, noMobile, dups, gaps,
+    dueInvoices: dueInvoices.length, dueAmount: dueInvoices.reduce((s, i) => s + i.amount_due, 0),
+  }
+}
+
+// ---- merge datasets by invoice id/no ----
+export function mergeInvoices(existing, incoming) {
+  const byId = new Map()
+  for (const i of existing) byId.set(i.id, i)
+  let added = 0
+  for (const i of incoming) {
+    if (!byId.has(i.id)) { byId.set(i.id, i); added++ }
+  }
+  return { merged: [...byId.values()], added }
+}
+
+// ---- export builders ----
+export function buildCSV(rows, headers) {
+  const esc = (s) => '"' + String(s ?? '').replace(/"/g, '""') + '"'
+  return [headers, ...rows].map((r) => r.map(esc).join(',')).join('\n')
 }

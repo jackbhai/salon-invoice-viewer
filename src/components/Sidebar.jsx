@@ -1,5 +1,5 @@
 import React from 'react'
-import { LayoutDashboard, ReceiptText, Users, BarChart3, FileUp, Database, Trash2, X, Sparkles, ChefHat, UserRound } from 'lucide-react'
+import { LayoutDashboard, ReceiptText, Users, BarChart3, FileUp, Database, Trash2, X, Sparkles, ChefHat, UserRound, Sun, Moon } from 'lucide-react'
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -10,7 +10,7 @@ const NAV = [
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
 ]
 
-export default function Sidebar({ open, onClose, tab, setTab, dataset, onUpload, onClear }) {
+export default function Sidebar({ open, onClose, tab, setTab, dataset, onUpload, onClear, onTheme, theme }) {
   const body = (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 px-5 h-16 border-b border-amoled-border">
@@ -55,6 +55,10 @@ export default function Sidebar({ open, onClose, tab, setTab, dataset, onUpload,
       </nav>
 
       <div className="mt-auto p-3 space-y-2">
+        <button onClick={onTheme} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-amoled-muted hover:text-amoled-text hover:bg-amoled-card border border-amoled-border">
+          {theme === 'pure' ? <Sun size={15} /> : <Moon size={15} />}
+          OLED Intensity: {theme === 'pure' ? 'Pure black' : 'Dim'}
+        </button>
         <div className="rounded-xl border border-amoled-border bg-amoled-card p-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-amoled-text">
             <Database size={14} className="text-cyan-300" />
