@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reloading…</title>
+    <style>
+      body{margin:0;background:#000;color:#e8e8ea;font-family:system-ui,sans-serif;display:grid;place-items:center;height:100vh}
+      a{color:#22d3ee}
+    </style>
+  </head>
+  <body>
+    <p>Redirecting to the app… <a href="./" id="a">Click here</a></p>
+    <script>
+      // GitHub Pages serves 404.html for missing paths. Send the user back to the app root.
+      window.location.replace('./');
+      document.getElementById('a').href = './';
+    </script>
+  </body>
+</html>
