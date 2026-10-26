@@ -2,12 +2,12 @@ name: New Bill Notifier
 
 on:
   schedule:
-    # every 3 minutes
-    - cron: '*/3 * * * *'
+    # every 5 minutes (GitHub free tier may delay scheduled runs under load)
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # needed to commit the watcher state file back to the repo
 
 concurrency:
   group: bill-watcher
@@ -28,13 +28,9 @@ jobs:
       - name: Install deps
         run: pip install beautifulsoup4
 
-      - name: Restore watcher state
-        id: state
-        uses: actions/cache@v4
-        with:
-          path: tools/.bill-state.json
-          key: bill-state-${{ runner.os }}
-
+      # State lives in tools/.bill-state.json INSIDE the repo (committed below).
+      # (The old actions/cache approach froze state forever: a fixed cache key
+      #  is immutable, so last_seen never advanced and old bills re-notified.)
       - name: Watch for new bills
         env:
           NTFY_URL: ${{ secrets.NTFY_URL }}
@@ -42,12 +38,19 @@ jobs:
           INVOICE_FILE: tools/.bill-state.json
         run: python tools/notify_bills.py | tee output.log
 
-      - name: Save watcher state
+      - name: Commit watcher state
         if: always()
-        uses: actions/cache@v4
-        with:
-          path: tools/.bill-state.json
-          key: bill-state-${{ runner.os }}
+        run: |
+          git config user.name "bill-watcher"
+          git config user.email "actions@users.noreply.github.com"
+          git add tools/.bill-state.json
+          if git diff --cached --quiet; then
+            echo "state unchanged, nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore: advance bill-watcher state [skip ci]"
+          git pull --rebase origin main
+          git push origin main
 
       - name: Upload log
         if: always()

@@ -56,7 +56,9 @@ def latest_invoice_number():
 
 
 def find_new(last_seen, budget=60):
-    """Forward-scan for contiguous new invoices. Handles voids by peeking ahead."""
+    """Forward-scan for contiguous new invoices. Handles voids by peeking ahead.
+    Returns (numbers, truncated) — truncated=True if the request budget ran out
+    while more bills may still exist beyond the scanned range."""
     new = []
     n = last_seen + 1
     requests = 0
@@ -83,8 +85,28 @@ def find_new(last_seen, budget=60):
                 break
             gap_checked = n + j
         if not peeked:
-            break  # no contiguous valid found (batch done)
-    return new
+            return new, False  # no contiguous valid found (batch done)
+    return new, True  # budget exhausted, more may exist
+
+
+def find_latest_from(lo):
+    """Highest valid invoice number >= lo, via exponential probe + binary search.
+    `lo` must itself be a valid invoice number."""
+    hi = lo + 16
+    while valid(fetch(hi)):
+        lo = hi
+        hi = lo + max(16, (hi - lo) * 2)
+        time.sleep(0.4)
+        if hi - lo > 100000:  # safety
+            break
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if valid(fetch(mid)):
+            lo = mid
+        else:
+            hi = mid
+        time.sleep(0.4)
+    return lo
 
 
 def parse(html, n):
@@ -180,8 +202,14 @@ def publish(title, message, click_url, tags="receipt"):
         headers["Authorization"] = "Bearer " + token
     data = message.encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    resp = urllib.request.urlopen(req, timeout=20)
-    return resp.status < 300
+    try:
+        resp = urllib.request.urlopen(req, timeout=20)
+        return resp.status < 300
+    except Exception as e:
+        # ntfy rate-limit (429), network blips etc. must never crash the run or
+        # advance state past an un-notified bill — caller stops and retries next run.
+        print(f"  publish failed: {e}")
+        return False
 
 
 def load_state():
@@ -216,10 +244,38 @@ def main():
         print(f"initialised baseline to {latest} (no notifications sent)")
         return 0
 
-    new_numbers = find_new(last)
-    print(f"found {len(new_numbers)} new bill number(s): {new_numbers}")
+    max_per_run = int(os.environ.get("MAX_PER_RUN", "20"))
+    new_numbers, truncated = find_new(last)
+    print(f"found {len(new_numbers)} new bill number(s): {new_numbers} (truncated={truncated})")
     if not new_numbers:
         print("no new bills")
+        return 0
+
+    if truncated or len(new_numbers) > max_per_run:
+        # Anti-flood digest: a big backlog (e.g. watcher was down) must produce ONE
+        # summary notification — never hundreds of individual (or duplicate) pushes.
+        anchor = new_numbers[-1] if new_numbers else last
+        latest = find_latest_from(anchor)
+        count = latest - last
+        lines = [f"{count} new bills since INV{last}: INV{last + 1} - INV{latest}", "",
+                 "Latest bills:"]
+        total_sum = 0.0
+        for n in range(max(last + 1, latest - 4), latest + 1):
+            html = fetch(n)
+            time.sleep(0.5)
+            if valid(html):
+                r = parse(html, n)
+                total_sum += r["total"]
+                lines.append(f"  \u2022 {r['invoice_no']} {r['customer']} {fmt(r['total'])}")
+        lines.append("")
+        lines.append("Full per-bill alerts resume from the next bill.")
+        click = f"{BASE}?invMencr={invmencr(latest)}&invshopid={SHOP}"
+        ok = publish(f"{count} New Bills - up to INV{latest}", "\n".join(lines), click, "receipt")
+        if ok:
+            save_state(latest)
+            print(f"digest sent for {count} bills, last-seen advanced to {latest}")
+        else:
+            print("digest publish failed; state unchanged, will retry next run")
         return 0
 
     n_new = 0
@@ -234,8 +290,12 @@ def main():
         title = f"New Bill {rec['invoice_no']} · {fmt(rec['total'])}"
         click = f"{BASE}?invMencr={invmencr(n)}&invshopid={SHOP}"
         ok = publish(title, build_notification(rec), click, "receipt")
+        if not ok:
+            # Do NOT advance past an un-notified bill; next run retries from here.
+            print(f"  stopping at {rec['invoice_no']} (publish failed), will retry next run")
+            break
         n_new += 1
-        print(f"  notified {rec['invoice_no']} ({'OK' if ok else 'FAIL'})")
+        print(f"  notified {rec['invoice_no']} (OK)")
         save_state(n)
     print(f"done, {n_new} new bills notified, last-seen advanced")
     return 0
